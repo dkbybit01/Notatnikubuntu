@@ -1,35 +1,60 @@
-name: Docker image CI
+name: CI — Docker build verification
+
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
+
 jobs:
-  build:
-    name: Build Docker image
+  build-images:
+    name: Build images for services
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            path: ./backend
+            tag: notatnik_backend:ci
+          - name: frontend
+            path: ./frontend
+            tag: notatnik_frontend:ci
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./backend/Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: dkbybit01/notatnikubuntu:ci-${{ github.sha }}
-      - name: Smoke test (run container)
+
+      - name: Inspect build context (debug)
         run: |
-          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep dkbybit01/notatnikubuntu | head -n1) || true
-          if [ -n "$IMAGE" ]; then
-            docker run --rm -d --name ci_test $IMAGE sleep 10 || true
-            docker ps -a
-            docker rm -f ci_test || true
+          echo "Service: ${{ matrix.name }}"
+          echo "Context path: ${{ matrix.path }}"
+          ls -la "${{ matrix.path }}" || true
+          echo "Root files:"
+          ls -la
+
+      - name: Ensure Dockerfile exists
+        run: |
+          if [ -f "${{ matrix.path }}/Dockerfile" ]; then
+            echo "Dockerfile found in ${{ matrix.path }}"
           else
-            echo "Image not found, skipping run"
+            echo "ERROR: No Dockerfile in ${{ matrix.path }}" >&2
+            exit 1
           fi
+
+      - name: Build image with buildx (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.path }}
+          file: ${{ matrix.path }}/Dockerfile
+          push: false
+          tags: ${{ matrix.tag }}
+          platforms: linux/amd64
+
+      - name: Build finished
+        run: echo "Build finished for ${{ matrix.name }}"
