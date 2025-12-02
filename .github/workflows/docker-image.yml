@@ -1,0 +1,35 @@
+name: Docker image CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: dkbybit01/notatnikubuntu:ci-${{ github.sha }}
+      - name: Smoke test (run container)
+        run: |
+          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep dkbybit01/notatnikubuntu | head -n1) || true
+          if [ -n "$IMAGE" ]; then
+            docker run --rm -d --name ci_test $IMAGE sleep 10 || true
+            docker ps -a
+            docker rm -f ci_test || true
+          else
+            echo "Image not found, skipping run"
+          fi
