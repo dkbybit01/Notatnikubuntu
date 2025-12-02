@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: notatnik-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notatnik-frontend
+  template:
+    metadata:
+      labels:
+        app: notatnik-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: notatnik_frontend:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
