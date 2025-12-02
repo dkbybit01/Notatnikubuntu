@@ -1,0 +1,76 @@
+name: CI — App build & tests
+
+on:
+  push:
+    branches: [ "main" ]   # <- zmień jeśli używasz innej gałęzi
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  detect:
+    name: Detect project type
+    runs-on: ubuntu-latest
+    outputs:
+      node-present: ${{ steps.check.outputs.node }}
+      python-present: ${{ steps.check.outputs.python }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: check
+        run: |
+          # ustawiamy outputy do dalszych jobów
+          if [ -f package.json ]; then echo "node=true" >> $GITHUB_OUTPUT; else echo "node=false" >> $GITHUB_OUTPUT; fi
+          if [ -f requirements.txt ] || [ -f setup.py ]; then echo "python=true" >> $GITHUB_OUTPUT; else echo "python=false" >> $GITHUB_OUTPUT; fi
+
+  build-node:
+    name: Node.js build & test
+    needs: detect
+    if: ${{ needs.detect.outputs.node-present == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests (if present)
+        run: |
+          if npm run | grep -q "test"; then npm test; else echo "No test script"; fi
+
+      - name: Build (if present)
+        run: |
+          if npm run | grep -q "build"; then npm run build; else echo "No build script"; fi
+
+  build-python:
+    name: Python build & tests
+    needs: detect
+    if: ${{ needs.detect.outputs.python-present == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          if [ -f requirements.txt ]; then python -m pip install --upgrade pip && pip install -r requirements.txt; else echo "No requirements.txt"; fi
+
+      - name: Run tests (pytest)
+        run: |
+          if [ -f pytest.ini ] || [ -d tests ] || python -c "import pytest" >/dev/null 2>&1; then
+            if command -v pytest >/dev/null 2>&1; then pytest -q || (echo 'pytest failed' && exit 1)
+            else echo "pytest not installed"; fi
+          else
+            echo "No tests to run"
+          fi
